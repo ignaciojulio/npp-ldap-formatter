@@ -4,19 +4,47 @@ using System.Text;
 
 namespace NppLdapFormatter;
 
-public static class Main
+public static unsafe class Main
 {
     private const uint NppmGetCurrentScintilla = 0x0400 + 4;
     private const uint SciGetTextLength = 2183;
     private const uint SciGetText = 2182;
     private const uint SciSetText = 2181;
+    private const int FuncItemNameLength = 64;
 
     private static IntPtr _nppHandle;
     private static readonly IntPtr[] _scintillaHandles = new IntPtr[2];
-    private static readonly FuncItem[] _funcItems =
-    [
-        new FuncItem("Format LDAP", FormatLdap)
-    ];
+
+    private static readonly IntPtr _pluginNamePointer;
+    private static readonly IntPtr _funcItemsPointer;
+
+    static Main()
+    {
+        _pluginNamePointer = Marshal.StringToHGlobalUni("NppLdapFormatter");
+
+        var funcItem = new FuncItemNative
+        {
+            PFunc = &FormatLdapEntry,
+            CmdId = 0,
+            Init2Check = false,
+            PShKey = IntPtr.Zero
+        };
+
+        const string menuName = "Format LDAP";
+        for (var i = 0; i < FuncItemNameLength; i++)
+        {
+            funcItem.ItemName[i] = '\0';
+        }
+
+        var copyLength = Math.Min(menuName.Length, FuncItemNameLength - 1);
+        for (var i = 0; i < copyLength; i++)
+        {
+            funcItem.ItemName[i] = menuName[i];
+        }
+
+        _funcItemsPointer = Marshal.AllocHGlobal(sizeof(FuncItemNative));
+        *(FuncItemNative*)_funcItemsPointer = funcItem;
+    }
 
     public static void SetInfo(IntPtr nppHandle, IntPtr scintillaMainHandle, IntPtr scintillaSecondHandle)
     {
@@ -25,7 +53,40 @@ public static class Main
         _scintillaHandles[1] = scintillaSecondHandle;
     }
 
-    public static FuncItem[] GetMenuItems() => _funcItems;
+    [UnmanagedCallersOnly(EntryPoint = "isUnicode")]
+    public static int IsUnicode() => 1;
+
+    [UnmanagedCallersOnly(EntryPoint = "setInfo")]
+    public static void SetInfoExport(IntPtr notepadPlusDataPtr)
+    {
+        if (notepadPlusDataPtr == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var notepadPlusData = Marshal.PtrToStructure<NotepadPlusData>(notepadPlusDataPtr);
+        SetInfo(notepadPlusData.NppHandle, notepadPlusData.ScintillaMainHandle, notepadPlusData.ScintillaSecondHandle);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "getFuncsArray")]
+    public static IntPtr GetFuncsArray(int* numberOfItems)
+    {
+        if (numberOfItems != null)
+        {
+            *numberOfItems = 1;
+        }
+
+        return _funcItemsPointer;
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "getName")]
+    public static IntPtr GetName() => _pluginNamePointer;
+
+    [UnmanagedCallersOnly]
+    private static void FormatLdapEntry()
+    {
+        FormatLdap();
+    }
 
     private static void FormatLdap()
     {
@@ -74,17 +135,42 @@ public static class Main
 
     private static void SetEditorText(IntPtr editorHandle, string text)
     {
-        SendMessage(editorHandle, SciSetText, IntPtr.Zero, text ?? string.Empty);
+        var utf8Bytes = Encoding.UTF8.GetBytes((text ?? string.Empty) + '\0');
+        var unmanagedBuffer = Marshal.AllocHGlobal(utf8Bytes.Length);
+
+        try
+        {
+            Marshal.Copy(utf8Bytes, 0, unmanagedBuffer, utf8Bytes.Length);
+            SendMessage(editorHandle, SciSetText, IntPtr.Zero, unmanagedBuffer);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(unmanagedBuffer);
+        }
     }
 
     [DllImport("user32", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, [MarshalAs(UnmanagedType.LPWStr)] string lParam);
-
-    [DllImport("user32", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, ref IntPtr lParam);
-}
 
-public sealed record FuncItem(string Name, Action Action);
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NotepadPlusData
+    {
+        public readonly IntPtr NppHandle;
+        public readonly IntPtr ScintillaMainHandle;
+        public readonly IntPtr ScintillaSecondHandle;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private unsafe struct FuncItemNative
+    {
+        public fixed char ItemName[FuncItemNameLength];
+        public delegate* unmanaged<void> PFunc;
+        public int CmdId;
+        [MarshalAs(UnmanagedType.I1)]
+        public bool Init2Check;
+        public IntPtr PShKey;
+    }
+}
