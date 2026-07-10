@@ -43,7 +43,7 @@ public static class LdapFormatterEngine
                 if (index < compactFilter.Length - 1 && compactFilter[index + 1] == ')')
                 {
                     output.AppendLine();
-                    output.Append(' ', Math.Max(0, depth - 1) * IndentSize);
+                    output.Append(' ', depth * IndentSize);
                 }
 
                 continue;
