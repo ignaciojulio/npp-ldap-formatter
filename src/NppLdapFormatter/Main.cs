@@ -82,6 +82,21 @@ public static unsafe class Main
     [UnmanagedCallersOnly(EntryPoint = "getName")]
     public static IntPtr GetName() => _pluginNamePointer;
 
+    [UnmanagedCallersOnly(EntryPoint = "messageProc")]
+    public static IntPtr MessageProc(uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        return IntPtr.Zero;
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "beNotified")]
+    public static void BeNotified(SCNotification* notif)
+    {
+        if (notif == null)
+        {
+            return;
+        }
+    }
+
     [UnmanagedCallersOnly]
     private static void FormatLdapEntry()
     {
@@ -154,6 +169,12 @@ public static unsafe class Main
 
     [DllImport("user32", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, ref IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct SCNotification
+    {
+        public readonly IntPtr Nmhdr;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct NotepadPlusData
