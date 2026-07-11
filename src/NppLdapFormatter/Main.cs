@@ -89,11 +89,17 @@ public static unsafe class Main
     }
 
     [UnmanagedCallersOnly(EntryPoint = "beNotified")]
-    public static void BeNotified(SCNotification* notif)
+    internal static void BeNotified(SCNotification* notif)
     {
         if (notif == null)
         {
             return;
+        }
+
+        switch (notif->Nmhdr.Code)
+        {
+            default:
+                break;
         }
     }
 
@@ -171,9 +177,17 @@ public static unsafe class Main
     private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, ref IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
-    public readonly struct SCNotification
+    internal readonly struct SCNotification
     {
-        public readonly IntPtr Nmhdr;
+        public readonly Nmhdr Nmhdr;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly struct Nmhdr
+    {
+        public readonly IntPtr HwndFrom;
+        public readonly UIntPtr IdFrom;
+        public readonly uint Code;
     }
 
     [StructLayout(LayoutKind.Sequential)]
